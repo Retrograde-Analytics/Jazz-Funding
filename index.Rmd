@@ -1,0 +1,1598 @@
+---
+title: "Classical vs Jazz Funding"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    social: menu 
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(maps)
+library(plotly)
+library(packcircles)
+library(ggiraph)
+library(ggraph)
+library(igraph)
+library(cowplot)
+library(DT)
+
+
+##################################
+
+## import main spreadsheet
+
+data <- read_excel('100 Orgs Project.xlsx', sheet = 'Combined')
+
+## import data for circlepacks
+
+circle_vert <- read_excel('100 Orgs Project.xlsx', sheet = 'Circle_vert')
+circle_edges <- read_excel('100 Orgs Project.xlsx', sheet = 'Circle_edges')
+
+## Create df grouped by org_type that averages fields
+
+mean_data <- data %>%
+  group_by(org_type) %>%
+  summarise_if(is.numeric, mean, na.rm = TRUE)
+
+mean_data1 <- mean_data[1:(length(mean_data)-5)]
+
+## Create df grouped by org_type that adds fields
+
+sum_data <- data %>%
+  group_by(org_type) %>%
+  summarise_if(is.numeric, sum, na.rm = TRUE)
+
+sum_data1 <- sum_data[1:(length(sum_data)-5)]
+
+
+#########
+
+```
+
+# Overview
+
+## Column {data-width=650, .tabset .tabset-fade}
+
+### National Overview
+
+```{r}
+## Map ##
+
+
+#create US map by Total Revenue
+
+US <- map_data("world") %>% filter(region=="USA")
+
+#add data to US map
+
+# Rorder data + Add a new column with tooltip text
+mytext <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Revenue: ", format(data$total_revenue, big.mark = ",", scientific = FALSE), "\n",
+  "% of Revenue is Grants:", round(data$percent_grants, digits = 2), "\n",
+  "Fiscal Year: ", data$year, sep="")
+
+#create map
+
+Revenue_map <- ggplot() +
+  geom_polygon(data = US, aes(x=long, y = lat, group = group), fill="white", alpha=0.3, colour='black') +
+  geom_point( data=data, shape=1, stroke=.5, aes(x=Lon, y=Lat, color=org_type, size=total_revenue, text=mytext)) + 
+  scale_size_continuous(range = c(0,20), name = "total_revenue") +
+  ggtitle('Total Revenue Map') +
+  facet_wrap(~org_type) +
+  theme_minimal() +
+  ylim(10,50) + xlim(-125,-65) + coord_map() +
+  scale_color_manual(values = c("#FF9900", "#1b98e0")) +
+  theme(legend.position = "none",
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        plot.title = element_text(hjust = 0.5))
+  
+
+ggplotly(Revenue_map, tooltip="text")
+
+
+
+```
+
+### Side by Side
+
+
+```{r}
+## Circles ##           
+
+packing <- circleProgressiveLayout(data$total_revenue, sizetype='area')
+
+data$text <- paste("name: ",data$org_name, "\n", "revenue:", format(data$total_revenue, big.mark = ",", scientific = FALSE), "\n", "% of Revenue is Grants:", round(data$percent_grants, digits = 2), "\n",
+  "Fiscal Year: ", data$year)
+
+data1 <- cbind(data, packing)
+dat.gg <- circleLayoutVertices(packing, npoints=50)
+dat.gg <- dat.gg %>% 
+  mutate(type = if_else(id <= 50, "Jazz", "Classical"))
+
+
+# Make the plot
+
+
+circles <- ggplot() + 
+  
+  # Make the bubbles
+  geom_polygon_interactive(data = dat.gg, aes(x, y, group = id, fill=as.factor(type), tooltip = data$text[id], data_id = id), colour = "black") +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Classical vs Jazz Funding", subtitle = "Total Revenue: Side-by-side Comparison") +
+  
+  # Add text in the center of each bubble + control its size
+  #geom_text(data = data, aes(x, y, size=radius, label = '')) +
+  #scale_size_continuous(range = c(1,4)) +
+  
+  # General theme:
+  
+  theme_void() + 
+  theme(legend.position='left', legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  coord_equal()
+
+
+
+circle_rev <- ggiraph(ggobj = circles, width_svg = 5, height_svg =4)
+
+circle_rev
+
+```
+
+### All Jazz Orgs
+
+```{r}
+#### Jazz Inside Classical ####
+
+# We need a data frame giving a hierarchical structure. Let's consider the flare dataset:
+edges <- circle_edges
+vertices <- circle_vert
+mygraph <- graph_from_data_frame(edges, vertices=vertices)
+
+# Control the size of each circle: (use the size column of the vertices data frame)
+
+
+circle <- ggraph(mygraph, layout = 'circlepack', weight=size) +
+  geom_node_circle(aes(fill = type), size=.6) +
+  ggtitle("Classical vs Jazz Funding",
+          subtitle = "Total Revenue: Top 50 Jazz Organizations vs Top 1 Classical") +
+  guides(colour = FALSE) +
+  
+
+
+  coord_equal() +
+  theme_void() +
+  theme(legend.position='left', legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+circle + scale_fill_manual(values = c("#FF9900", "#1b98e0"), labels=c("Metropolitan Opera", "Top 50 Jazz Organizaions"))
+
+```
+
+## Column {data-width=350, .tabset .tabset-fade}
+
+### Intoduction
+
+#### Abstract
+
+It has long been observed by Jazz musicians that when it comes to American art music funding, Classical Institutions take the lion's share. These are of course anecdotal observations, however, this study seeks to verify these observations and, if possible, quantify them.
+
+This study has two sets of goals:
+
+Short-term goals:
+
+Answer the questions:
+
+1) Is there a funding disparity between Jazz and Classical Institutions?
+2) If so, how can the disparity be quantified?
+
+Long-term goals:
+
+- Track disparities over time
+- Gain insight into how reliant American art music is on grants/contributions
+- Use as a platform to discuss a more sustainable future for Jazz
+- Empower Jazz Institutions in their fundraising efforts
+- Assist in the discussion about institutional racism in America
+
+### Methodology
+
+This study compares the top 50 Jazz and Classical Non-profit Institutions, respectively, as determined by total revenue in the most recent tax documents available. A variety of metrics are looked at for comparison, in four main categories: Personnel, Revenue, Expenses, and Bottom Line. These metrics are investigated in terms of averages per organization type, totals by organization type, and totals by each organization.
+
+The dataset, which can be explored on the last page of this dashboard, was collected from publicly available tax documents from [ProPublica's 'Nonprofit Explorer](https://projects.propublica.org/nonprofits/). The dashboard will be updated as more data is made available. 
+
+Of the data presented: 66% is from 2019, 31% is from 2018, and 3% is from 2017. Differences in when organizations report, when the IRS processes, and when ProPublica publishes accounts for the gaps in reporting. These are all pre-pandemic figures. This shortcoming in the data stream will be evened out over time by updating the dataset as new numbers are released.
+
+This study does not include for-profit organizations, colleges/universities, or organizations that offer both Jazz and Classical programming. This is due to lack of publicly available data, the difficulty in parsing funding streams within an organization that supports both genres, and/or the limited resources of the author. However, it would be beneficial for future studies to look at the types of organizations just mentioned. 
+
+
+### Credits
+
+This study and dashboard was created by [Nicholas Krolak](https://www.nicholaskrolak.com) and Retrograde Analytics. Questions and comments can be sent via [this link](https://www.nicholaskrolak.com/contact).
+
+# Totals by Organization
+
+## Column {data-width=1000, .tabset .tabset-fade}
+
+### Total Revenue
+
+
+```{r}
+##
+trd_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Revenue: ", format(data$total_revenue, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+total_rev_dist <- ggplot(data, aes(x=reorder(org_name, -total_revenue), y=total_revenue/1000000, fill=org_type, text=trd_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Revenue by Organization') + 
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(total_rev_dist, tooltip="text")
+
+```
+
+### Grants
+```{r}
+grants_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Grants: ", format(data$grants, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+grants_dist <- ggplot(data, aes(x=reorder(org_name, -grants), y=grants/1000000, fill=org_type, text=grants_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Grants by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(grants_dist, tooltip = "text")
+
+```
+
+### Program Revenue
+```{r}
+pro_rev_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Program Revenue: ", format(data$program_revenue, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+pro_rev_dist <- ggplot(data, aes(x=reorder(org_name, -program_revenue), y=program_revenue/1000000, fill=org_type, text=pro_rev_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Program Revenue by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(pro_rev_dist, tooltip = "text")
+
+```
+
+### Investment Revenue
+```{r}
+inv_inc_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Investment Income: ", format(data$investment_income, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+inv_inc_dist <- ggplot(data, aes(x=reorder(org_name, -investment_income), y=investment_income/1000000, fill=org_type, text=inv_inc_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Investment Income by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(inv_inc_dist, tooltip = "text")
+
+```
+
+### Other Revenue
+```{r}
+other_rev_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Other Revenue: ", format(data$other_revenue, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+other_rev_dist <- ggplot(data, aes(x=reorder(org_name, -other_revenue), y=other_revenue/1000000, fill=org_type, text=other_rev_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Other Revenue by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(other_rev_dist, tooltip = "text")
+
+```
+
+### Total Expenses
+```{r}
+total_expenses_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Total Expeses: ", format(data$total_expenses, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+total_expenses_dist <- ggplot(data, aes(x=reorder(org_name, -total_expenses), y=total_expenses/1000000, fill=org_type, text=total_expenses_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Expenses by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(total_expenses_dist, tooltip = "text")
+
+```
+
+### Grants Paid
+```{r}
+grants_paid_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Total Grants Paid: ", format(data$grants_paid, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+grants_paid_dist <- ggplot(data, aes(x=reorder(org_name, -grants_paid), y=grants_paid/1000000, fill=org_type, text=grants_paid_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Grants Paid by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(grants_paid_dist, tooltip = "text")
+
+```
+
+### Salaries/Compensation
+```{r}
+salaries_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Salaries/Compensation: ", format(data$salaries, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+salaries_dist <- ggplot(data, aes(x=reorder(org_name, -salaries), y=salaries/1000000, fill=org_type, text=salaries_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Salaries/Compensation by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(salaries_dist, tooltip = "text")
+```
+
+### Fundraising Expenses
+```{r}
+
+fundraising_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Total Fundraising Expenses: ", format(data$total_fundraising_expenses, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+fundraising_dist <- ggplot(data, aes(x=reorder(org_name, -total_fundraising_expenses), y=total_fundraising_expenses/1000000, fill=org_type, text=fundraising_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Fundraising Expenses by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(fundraising_dist, tooltip = "text")
+
+```
+
+### Other Expenses
+```{r}
+
+other_expenses_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Total Other Expenses: ", format(data$other_expenses, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+other_expenses_dist <- ggplot(data, aes(x=reorder(org_name, -other_expenses), y=other_expenses/1000000, fill=org_type, text=other_expenses_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Other Expenses by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(other_expenses_dist, tooltip = "text")
+
+```
+
+### Revenue Less Expenses
+```{r}
+
+rev_less_expenses_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Total Revenue Less Expenses: ", format(data$revenue_less_expenses, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+rev_less_expenses_dist <- ggplot(data, aes(x=reorder(org_name, -revenue_less_expenses), y=revenue_less_expenses/1000000, fill=org_type, text=rev_less_expenses_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Revenue Less Expenses by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(rev_less_expenses_dist, tooltip = "text")
+
+```
+
+### Program Revenue Expenses
+```{r}
+pro_rev_less_expenses_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Total Program Revenue Less Expenses: ", format(data$program_rev_less_expenses, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+pro_rev_less_expenses_dist <- ggplot(data, aes(x=reorder(org_name, -program_rev_less_expenses), y=program_rev_less_expenses/1000000, fill=org_type, text=pro_rev_less_expenses_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Program Revenue Less Expenses by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(pro_rev_less_expenses_dist, tooltip = "text")
+
+```
+
+### Funding Differential
+```{r}
+fund_diff_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Total Funding Differencial: ", format(data$funding_differencial, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+fund_diff_dist <- ggplot(data, aes(x=reorder(org_name, -funding_differencial), y=funding_differencial/1000000, fill=org_type, text=fund_diff_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Funding Differencial by Organization') +
+  ylab('millions (usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(fund_diff_dist, tooltip = "text")
+
+```
+
+### Grants Dollars Recieved per Fundraising Dollar
+```{r}
+
+grant_fund_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Grant Dollars Recieved per Fundraising Dollar Spent: ", format(data$grant_dollars_per_fundrasing_dollar, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+grant_fund_dist <- ggplot(data, aes(x=reorder(org_name, -grant_dollars_per_fundrasing_dollar), y=grant_dollars_per_fundrasing_dollar, fill=org_type, text=grant_fund_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Grant Dollars Recieved per Fundraising Dollar Spent by Organization') +
+  ylab('(usd)') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(grant_fund_dist, tooltip = "text")
+
+```
+
+### Percent Revenue from Grants
+```{r}
+perc_grants_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Percent Revenue from Grants: ", format(data$percent_grants, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+perc_grants_dist <- ggplot(data, aes(x=reorder(org_name, -percent_grants), y=percent_grants, fill=org_type, text=perc_grants_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Percent of Revenue from Grants by Organization') +
+  ylab('percent %') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(perc_grants_dist, tooltip = "text")
+
+```
+
+### Percent Program Revenue
+```{r}
+perc_prorev_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Percent Total Revenue from Program Revenue: ", format(data$percent_program_revenue, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+perc_prorev_dist <- ggplot(data, aes(x=reorder(org_name, percent_program_revenue), y=percent_program_revenue, fill=org_type, text=perc_prorev_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Percent of Total Revenue from Program Revenue by Organization') +
+  ylim(0,100) +
+  ylab('percent %') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.y = element_text(size = 6),
+        axis.text.x=element_blank())
+
+ggplotly(perc_prorev_dist, tooltip = "text")
+
+```
+
+### Total Number of Employees
+```{r}
+
+emp_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Number of Employees: ", format(data$employees, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+emp_dist <- ggplot(data, aes(x=reorder(org_name, -employees), y=employees, fill=org_type, text=emp_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Number of Employees by Organization') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank())
+
+ggplotly(emp_dist, tooltip = "text")
+
+```
+
+### Total Number of Volunteers
+```{r}
+vol_dist_text <- paste(
+  "Org: ", data$org_name, "\n", 
+  "Number of Volunteers: ", format(data$volunteers, big.mark = ",", scientific = FALSE), "\n",
+  "Type: ", data$org_type, sep="")
+
+vol_dist <- ggplot(data, aes(x=reorder(org_name, -volunteers), y=volunteers, fill=org_type, text=vol_dist_text)) + 
+  geom_bar(stat = "identity", width=.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle('Total Number of Volunteers by Organization') +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank())
+
+ggplotly(vol_dist, tooltip = "text")
+
+```
+
+
+
+# Averages by Type
+
+## Column {data-width=1000, .tabset .tabset-fade}
+
+### Personnel
+
+```{r}
+# Personel Mean
+
+voting_members_mean <- ggplot(mean_data1, aes(x=org_type, y=voting_members, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Number of Voting Members") +
+  geom_text(aes(label = round(voting_members, digits=0)), vjust = -.25, size=2) +
+  ylim(0, 53) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+independent_members_mean <-ggplot(mean_data1, aes(x=org_type, y=independent_members, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Number of Independent Members") +
+  geom_text(aes(label = round(independent_members, digits=0)), vjust = -.25, size=2) +
+  ylim(0, 53) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+employees_mean <-ggplot(mean_data1, aes(x=org_type, y=employees, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Number of Employees") +
+  geom_text(aes(label = round(employees, digits=0)), vjust = -.25, size=2) +
+  ylim(0, 605) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+volunteers_mean <-ggplot(mean_data1, aes(x=org_type, y=volunteers, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Number of Volunteers") +
+  geom_text(aes(label = round(volunteers, digits=0)), vjust = -.25, size=2) +
+  ylim(0, 605) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+avg_employee_pay_mean <- ggplot(mean_data1, aes(x=org_type, y=(salaries/employees)/1000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Employee Pay") +
+  geom_text(aes(label = round((salaries/employees)/1000, digits=2)), vjust = -.25, size=2) +
+  ylab('thousands (usd)') +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y = element_text(size = 6),
+        legend.title = element_blank ())
+
+
+
+# Grid Layout for Personel
+
+personel_grid_mean <- plot_grid(employees_mean + theme(legend.position="none"), 
+                                volunteers_mean + theme(legend.position="none"),
+                                avg_employee_pay_mean + theme(legend.position="none"),
+                                voting_members_mean + theme(legend.position="none"),
+                                independent_members_mean + theme(legend.position="none"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  independent_members_mean + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+# add the legend to the row we made earlier. Give it one-third of 
+# the width of one plot (via rel_widths).
+plot_grid(personel_grid_mean, legend, rel_widths = c(2, .4))
+
+
+
+
+```
+
+### Revenue
+
+```{r}
+# Revenue Mean 
+
+grants_mean <- ggplot(mean_data1, aes(x=org_type, y=grants/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Grant Revenue") +
+  geom_text(aes(label = round(grants/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=8, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank (),
+        axis.title.y = element_text(size = 6))
+
+
+program_rev_mean <- ggplot(mean_data1, aes(x=org_type, y=program_revenue/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Program Revenue") +
+  geom_text(aes(label = round(program_revenue/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=8, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+investment_income_mean <- ggplot(mean_data1, aes(x=org_type, y=investment_income/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Investment Revenue") +
+  geom_text(aes(label = round(investment_income/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=8, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+other_revenue_mean <- ggplot(mean_data1, aes(x=org_type, y=other_revenue/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Other Revenue") +
+  geom_text(aes(label = round(other_revenue/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=8, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank (),
+        axis.title.y = element_text(size = 6))
+
+
+total_revenue_mean <- ggplot(mean_data1, aes(x=org_type, y=total_revenue/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Total Revenue") +
+  geom_text(aes(label = round(total_revenue/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=8, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+# Grid Layout for Revenue
+
+revenue_grid_mean <- plot_grid(grants_mean + theme(legend.position="none"),
+                               program_rev_mean + theme(legend.position="none"), 
+                               investment_income_mean + theme(legend.position="none"),
+                               other_revenue_mean + theme(legend.position="none"),
+                               total_revenue_mean + theme(legend.position="none"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  grants_mean + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+# add the legend to the row we made earlier. Give it one-third of 
+# the width of one plot (via rel_widths).
+plot_grid(revenue_grid_mean, legend, rel_widths = c(2, .4))
+
+```
+
+### Expenses
+
+```{r}
+# Expenses
+
+
+grants_paid_mean <- ggplot(mean_data1, aes(x=org_type, y=grants_paid/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Grants Paid") +
+  geom_text(aes(label = round(grants_paid/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank (),
+        axis.title.y = element_text(size = 6))
+
+
+salaries_mean <- ggplot(mean_data1, aes(x=org_type, y=salaries/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Salaries/Compensation") +
+  geom_text(aes(label = round(salaries/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+
+total_fundraising_mean <- ggplot(mean_data1, aes(x=org_type, y=total_fundraising_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Fundraising Expenses") +
+  geom_text(aes(label = round(total_fundraising_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),        
+        legend.title = element_blank ())
+
+
+other_expenses_mean <- ggplot(mean_data1, aes(x=org_type, y=other_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Other Expenses") +
+  geom_text(aes(label = round(other_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank (),
+        axis.title.y = element_text(size = 6))
+
+total_expenses_mean <- ggplot(mean_data1, aes(x=org_type, y=total_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Total Expenses") +
+  geom_text(aes(label = round(total_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,40) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),        
+        legend.title = element_blank ())
+
+
+# Grid Layout for Expenses
+
+expenses_grid_mean <- plot_grid(grants_paid_mean + theme(legend.position="none"),
+                                salaries_mean + theme(legend.position="none"),
+                                total_fundraising_mean + theme(legend.position="none"),
+                                other_expenses_mean + theme(legend.position="none"),
+                                total_expenses_mean + theme(legend.position="none"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  grants_paid_mean + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+# add the legend to the row we made earlier. Give it one-third of 
+# the width of one plot (via rel_widths).
+plot_grid(expenses_grid_mean, legend, rel_widths = c(2, .4))
+
+```
+
+### Bottom Line
+```{r}
+# Calculations
+
+rev_less_expenses_mean <- ggplot(mean_data1, aes(x=org_type, y=revenue_less_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Revenue Less Expenses") +
+  geom_text(aes(label = round(revenue_less_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0, 24) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y = element_text(size = 6),
+        legend.title = element_blank ())
+
+
+program_rev_less_expenses_mean <- ggplot(mean_data1, aes(x=org_type, y=program_rev_less_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Program Revenue Less Expenses") +
+  geom_text(aes(label = round(program_rev_less_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,-24) +
+  theme(plot.title = element_text(size=5, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+percent_grants_mean <- ggplot(mean_data1, aes(x=org_type, y=percent_grants, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Percent of Revenue from Grants") +
+  geom_text(aes(label = round(percent_grants, digits=2)), vjust = -.25, size=2) +
+  ylim(0,100) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+funding_differencial_mean <- ggplot(mean_data1, aes(x=org_type, y=funding_differencial/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Average Funding Differencial") +
+  geom_text(aes(label = round(funding_differencial/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,-24) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+grants_per_fundraising_mean <- ggplot(mean_data1, aes(x=org_type, y=grant_dollars_per_fundrasing_dollar, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  ggtitle("Average Grant Dollars per Fundraising Dollar") +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  geom_text(aes(label = round(grant_dollars_per_fundrasing_dollar, digits=2)), vjust = -.25, size=2) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+percent_program_revenue_mean <- ggplot(mean_data1, aes(x=org_type, y=percent_program_revenue, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  ggtitle("Average Percent Program Revenue") +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  geom_text(aes(label = round(grant_dollars_per_fundrasing_dollar, digits=2)), vjust = -.25, size=2) +
+  ylim(0,100) +
+  theme(plot.title = element_text(size=6, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+# Grid Layout for Calculations
+
+calculations_grid_mean <- plot_grid(rev_less_expenses_mean + theme(legend.position="none"),
+                                    program_rev_less_expenses_mean + theme(legend.position="none"),
+                                    funding_differencial_mean + theme(legend.position="none"),
+                                    grants_per_fundraising_mean+ theme(legend.position="none"),
+                                    percent_grants_mean + theme(legend.position="none"),
+                                    percent_program_revenue_mean + theme(legend.position="none"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  rev_less_expenses_mean + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+# add the legend to the row we made earlier. Give it one-third of 
+# the width of one plot (via rel_widths).
+plot_grid(calculations_grid_mean, legend, rel_widths = c(2, .4))
+
+```
+
+# Totals by Type
+
+## Column {data-width=1000, .tabset .tabset-fade}
+
+### Personnel
+
+```{r}
+# Personel Sum
+
+voting_members_sum <- ggplot(sum_data1, aes(x=org_type, y=voting_members, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Number of Voting Members") +
+  geom_text(aes(label = round(voting_members, digits=2)), vjust = -.25, size=2) +
+  ylim(0,2590) +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+independent_members_sum <-ggplot(sum_data1, aes(x=org_type, y=independent_members, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  geom_text(aes(label = round(independent_members, digits=2)), vjust = -.25, size=2) +
+  ggtitle("Total Number of Independent Members") +
+  ylim(0,2590) +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+employees_sum <-ggplot(sum_data1, aes(x=org_type, y=employees, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Number of Employees") +
+  geom_text(aes(label = round(employees, digits=2)), vjust = -.25, size=2) +
+  ylim(0, 30100) +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+volunteers_sum <-ggplot(sum_data1, aes(x=org_type, y=volunteers, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  geom_text(aes(label = round(volunteers, digits=2)), vjust = -.25, size=2) +
+  ggtitle("Total Number of Volunteers") +
+  ylim(0, 30100) +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+# Grid Layout for Personel
+
+personel_grid_sum <- plot_grid(employees_sum + theme(legend.position="none"),
+                               volunteers_sum + theme(legend.position="none"),
+                               voting_members_sum + theme(legend.position="none"),
+                               independent_members_sum+ theme(legend.position="none"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  voting_members_sum + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+# add the legend to the row we made earlier. Give it one-third of 
+# the width of one plot (via rel_widths).
+plot_grid(personel_grid_sum, legend, rel_widths = c(2, .4))
+
+
+```
+
+### Revenue
+
+```{r}
+# Revenue Sum
+
+grants_sum <- ggplot(sum_data1, aes(x=org_type, y=grants/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Grant Revenue") +
+  geom_text(aes(label = round(grants/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y = element_text(size = 6),
+        legend.title = element_blank ())
+
+
+program_rev_sum <- ggplot(sum_data1, aes(x=org_type, y=program_revenue/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Program Revenue") +
+  geom_text(aes(label = round(program_revenue/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+investment_income_sum <- ggplot(sum_data1, aes(x=org_type, y=investment_income/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Investment Revenue") +
+  geom_text(aes(label = round(investment_income/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+other_revenue_sum <- ggplot(sum_data1, aes(x=org_type, y=other_revenue/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Other Revenue") +
+  geom_text(aes(label = round(other_revenue/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y = element_text(size = 6),
+        legend.title = element_blank ())
+
+
+total_revenue_sum <- ggplot(sum_data1, aes(x=org_type, y=total_revenue/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Revenue") +
+  geom_text(aes(label = round(total_revenue/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+# Grid Layout for Revenue
+
+revenue_grid_sum <- plot_grid(grants_sum + theme(legend.position="none"),
+                              program_rev_sum + theme(legend.position="none"),
+                              investment_income_sum + theme(legend.position="none"),
+                              other_revenue_sum + theme(legend.position="none"),
+                              total_revenue_sum + theme(legend.position="none"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  grants_sum + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+# add the legend to the row we made earlier. Give it one-third of 
+# the width of one plot (via rel_widths).
+plot_grid(revenue_grid_sum, legend, rel_widths = c(2, .4))
+
+```
+
+### Expenses
+
+```{r}
+# Expenses
+
+
+grants_paid_sum <- ggplot(sum_data1, aes(x=org_type, y=grants_paid/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Grants Paid") +
+  geom_text(aes(label = round(grants_paid/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y = element_text(size = 6),
+        legend.title = element_blank ())
+
+
+salaries_sum <- ggplot(sum_data1, aes(x=org_type, y=salaries/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Salaries/Compensation") +
+  geom_text(aes(label = round(salaries/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+total_fundraising_sum <- ggplot(sum_data1, aes(x=org_type, y=total_fundraising_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Fundraising Expenses") +
+  geom_text(aes(label = round(total_fundraising_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+other_expenses_sum <- ggplot(sum_data1, aes(x=org_type, y=other_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Other Expenses") +
+  geom_text(aes(label = round(other_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y = element_text(size = 6),
+        legend.title = element_blank ())
+
+
+total_expenses_sum <- ggplot(sum_data1, aes(x=org_type, y=total_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Expenses") +
+  geom_text(aes(label = round(total_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0,2000) +
+  theme(plot.title = element_text(size=7, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title = element_blank ())
+
+
+# Grid Layout for Expenses
+
+expenses_grid_sum <- plot_grid(grants_paid_sum + theme(legend.position="none"),
+                               salaries_sum + theme(legend.position="none"),
+                               total_fundraising_sum + theme(legend.position="none"),
+                               other_expenses_sum + theme(legend.position="none"),
+                               total_expenses_sum + theme(legend.position="none"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  grants_paid_sum + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+# add the legend to the row we made earlier. Give it one-third of 
+# the width of one plot (via rel_widths).
+plot_grid(expenses_grid_sum, legend, rel_widths = c(2, .4))
+
+```
+
+### Bottom Line
+
+```{r}
+# Calculations
+
+rev_less_expenses_sum <- ggplot(sum_data1, aes(x=org_type, y=revenue_less_expenses/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Revenue Less Expenses") +
+  geom_text(aes(label = round(revenue_less_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0, 1200) +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y = element_text(size = 6),
+        legend.title = element_blank ())
+
+
+program_rev_less_expenses_sum <- ggplot(sum_data1, aes(x=org_type, y=program_rev_less_expenses/1000000,
+                                                       fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Program Revenue Less Expenses") +
+  geom_text(aes(label = round(program_rev_less_expenses/1000000, digits=2)), vjust = -.25, size=2) +
+  ylim(0, -1200) +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        legend.title = element_blank ())
+
+
+funding_differencial_sum <- ggplot(sum_data1, aes(x=org_type, y=funding_differencial/1000000, fill=org_type)) +
+  geom_bar(stat = 'identity', width=0.2) +
+  scale_fill_manual(values = c("#FF9900", "#1b98e0")) +
+  ggtitle("Total Funding Differencial") +
+  geom_text(aes(label = round(funding_differencial/1000000, digits=2)), vjust = -.25, size=2) +
+  ylab('millions (usd)') +
+  ylim(0, -1200) +
+  theme(plot.title = element_text(size=9, hjust=.5),
+        axis.title.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y = element_text(size = 6),
+        legend.title = element_blank ())
+
+
+# Grid Layout for Calculations
+
+calculations_grid_sum <- plot_grid(rev_less_expenses_sum + theme(legend.position="none"),
+                                   program_rev_less_expenses_sum + theme(legend.position="none"),
+                                   funding_differencial_sum + theme(legend.position="none"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  rev_less_expenses_sum + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+
+
+# add the legend to the row we made earlier. Give it one-third of 
+# the width of one plot (via rel_widths).
+plot_grid(calculations_grid_sum, legend, rel_widths = c(2, .4))
+
+```
+
+
+# Conclusion
+
+## Column {data-width=333}
+
+### <B>Discussion</B>
+
+The answer to the first question proposed by this study, "Is there a funding disparity between Jazz and Classical Institutions?", is yes. There is unquestionably a funding disparity between the top 50 Jazz and Classical Institutions, which brings the next question, how is this disparity quantified.
+
+If we look at the averaged metrics, we find a great disparity in favor of the Classical World. Among the revenue metrics we see an average discrepancy of:
+
+- 790.69% in <B>Total Revenue</B>,
+- 897.53% in <B>Grant Revenue</B>
+- 6,280%  in <B>Invenstment Income</B>
+
+When we look at the last major revenue metric, <B>Program Revenue</B>, a similar disparity to Total Revenue or Grant Revenue. However the gap is considerably smaller at 568.78%, which aligns with the data from both the <B>Percent of Revenue from Grants</B> and <B>Percent Program Revenue</B> metrics respectively. This suggests that Jazz Orgaizations get a higher percentage of their revenue from sales and are closer to being able to support themselves without outside money.
+
+Solvency, although not the main focus this study, is in fact a point of interest in future discussions about the sustainability of Art Musics in America. It is clear from this dataset that the majority of Jazz and Classical Institutions cannot support themselves without major philanthropic support, however, it is worth while to see which group is closer to being able operate on their own.
+
+Another interesting metric is <B>Grant Dollars per Fundraising Dollar</B>. This can be seen as a return on investment for fundraising expenses. Here, Jazz Organizaions average \$23.32 per fundraising dollar, whereas Classical Organizations average \$9.68. 
+
+
+## Column {data-width=333}
+
+### <B>Conclusion</B>
+
+In conclusion, there is no doubt that Classical Organizations have more funding than their Jazz counterparts. In total the 50 largest Classical Institutions have at their disposal:
+
+- $1.86 billion in <B>Total Revenue</B>
+- $1.09 billion in <B>Grants</B>
+- $583 million in <B>Program Revenue</B>
+- $156 million in <B>Investment Revenue</B>
+
+compared to the 50 largest Jazz Organizations:
+
+- $236 million in <B>Total Revenue</B>
+- $121 million in <B>Grants</B>
+- $102 million in <B>Program Revenue</B>
+- $2.5 million in <B>Investment Revenue</B>
+
+These totals are [orders of magnitude apart](https://www.youtube.com/watch?v=yMYsjO1n5Lk). However, Jazz Organizations seem to be less dependent on outside money, get higher returns on foundraising expenses, and on average seem to make more with less.
+
+## Column {data-width=333}
+
+
+### <B>Next Steps</B>
+
+Moving forward, let us consider:
+
+Why does this funding deficit exist?
+
+What can be done about it?   
+
+and...
+
+What would the Jazz Ecosystem look like if Jazz Institutions were funded on the same level as their Classical peers?
+
+#### Possible Future Studies
+
+-	How is the pandemic affecting the funding disparity?
+-	How is funding distributed in organizations that fund both Classical and Jazz Organizations?
+-	How is funding distributed in organizations that present both Classical and Jazz Music?
+
+
+# Data/Glossary
+
+## Column {data-width=650, .tabset .tabset-fade }
+
+### Original Dataset
+
+```{r}
+
+datatable(data %>% select(-one_of('mission_statement', 'Lat', 'Lon', 'text', 'avg_employee_pay')),
+          options = list(
+            scrollY="475px",
+            scrollX=TRUE, 
+            pageLength = 100,
+            dom = 'Bfrtip')
+          )
+
+```
+
+### Averages by Type
+
+```{r}
+
+datatable(mean_data1 %>% select(-'avg_employee_pay'),
+          options = list(
+            scrollY="475px",
+            scrollX=TRUE, 
+            pageLength = 100,
+            dom = 'Bfrtip')
+          )
+```
+
+### Totals by Type
+
+```{r}
+
+datatable(sum_data1 %>% select(-one_of('percent_grants', 'percent_program_revenue', 
+                                       'grant_dollars_per_fundrasing_dollar', 'avg_employee_pay')),
+          options = list(
+            scrollY="475px",
+            scrollX=TRUE, 
+            pageLength = 100,
+            dom = 'Bfrtip')
+          )
+```
+
+
+## Column {data-width=350}
+
+### Glossary
+
+#### Averages by Type
+This section expreses the data fields as averages per organziation in order to compare Jazz and Classical institutions.
+
+#### Personnel: Data concerning human resources
+
+- <B>Employees</B> Number of employees
+- <B>Volunteers</B> Number of volunteers
+- <B>Average Employee Pay</B> Average yearly pay per employee
+- <B>Voting Members</B> Number of voting board members
+- <B>Independent Members</B> Number of independent board members
+
+#### Revenue: Data concerning yearly income
+
+- <B>Grant Revenue</B> Income from grants/donations
+- <B>Program Revenue</B> Income from sale of tickets, goods, or services
+- <B>Investment Reveune</B> Income from investments, trust funds, etc.
+- <B>Other Revenue</B> Income from other sources
+- <B>Total Revenue</B> Total income
+
+#### Expenses: Data concerning yearly operative costs
+
+- <B>Grants Paid</B> Amount paid out in grants
+- <B>Salaries/Compensation</B> Amount paid to exployees
+- <B>Fundraising Expenses</B> Amount spent fundraising
+- <B>Other Expenses</B> Amount spent on other factors
+- <B>Total Expenses</B> Total cost of operation
+
+#### Bottom Line: Data concerning yearly overall finances
+
+- <B>Revenue Less Expenses</B> Total income minus total cost of operation
+- <B>Program Revenue Less Expenses</B> Program revenue minus cost of operations
+- <B>Funding Differential</B> Grant funding minus Program Revenue
+- <B>Grant Dollar per Fundraising Dollar</B> Return on investment of fundraising expenses
+- <B>Percent of Revenue from Grants</B> Proportion of Grant Funds to Total Revenue
+- <B>Percent Program Revenue</B> Proportion of Program Revenue To total Revenue
